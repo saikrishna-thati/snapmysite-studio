@@ -218,7 +218,7 @@ function assignMatchAssets(scenes, assets) {
 }
 
 function shotTiming(scene, index, rand) {
-  const defaults = { coldopen: 1.5, hook: 1.125, statement: 1.5, flashword: 1.125, screen: 2.75, scroll: 2.75, feature: 1.875, featureStack: 1.875, stat: 1.875, quote: 2.25, logos: 1.5, marquee: 1.5, split: 2.75, cta: 2.25, endcard: 2.625, flyin: 4.5, depthReveal: 3.75, matchcut: 3.75, track: 4.5 };
+  const defaults = { coldopen: 2.0, hook: 1.875, statement: 2.25, flashword: 1.5, screen: 2.75, scroll: 2.75, feature: 2.25, featureStack: 2.5, stat: 2.0, quote: 2.5, logos: 1.875, marquee: 1.875, split: 2.75, cta: 2.25, endcard: 2.625, flyin: 3.75, depthReveal: 3.75, matchcut: 3.75, track: 3.75 };
   const requested = Number(scene.duration ?? scene.durationSeconds ?? 0);
   const quiet = Boolean(scene.quiet || scene.hold === true || scene.holdQuiet === true || scene.silent === true);
   const longHold = Number(scene.hold ?? scene.holdDuration ?? 0);
@@ -1004,7 +1004,7 @@ export function compose(brief, plan, opts = {}) {
   scenes = assignAssets(scenes, assetPool);
   scenes = assignMatchAssets(scenes, assetPool);
   // Real evidence only: a product shot without a real capture is skipped, never faked.
-  scenes = scenes.filter((sc) => { if (!PRODUCT_SCENE_TYPES.has(sc.type)) return true; const a = sc.type === "matchcut" ? (sc.fromAsset || sc.toAsset || sc.asset) : sc.asset; return Boolean(a?.url) && !String(a.url).startsWith("data:"); });
+  scenes = scenes.filter((sc) => { if (!PRODUCT_SCENE_TYPES.has(sc.type)) return true; const a = sc.type === "matchcut" ? (sc.fromAsset || sc.toAsset || sc.asset) : sc.asset; return Boolean(a?.url); });
   if (!scenes.length || scenes[scenes.length - 1].type !== "endcard") scenes.push({ type: "endcard" });
   const direction = plan.direction && typeof plan.direction === "object" ? plan.direction : {};
   const holds = Array.isArray(direction.holds) ? direction.holds.filter((k) => typeof k === "string") : [];

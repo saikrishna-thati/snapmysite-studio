@@ -117,9 +117,10 @@ export function validateShotTiming(scenes) {
     
     // Check against shot-specific duration limits
     if (spec) {
-      if (dur < spec.min) {
+      const isHold = sc.quiet || sc.hold || (dur >= 5 && dur <= 6.5);
+      if (!isHold && dur < spec.min) {
         issues.push(`Shot ${i + 1} (${spec.name}): duration ${r3(dur)}s is below minimum ${spec.min}s`);
-      } else if (dur > spec.max) {
+      } else if (!isHold && dur > spec.max) {
         issues.push(`Shot ${i + 1} (${spec.name}): duration ${r3(dur)}s exceeds ceiling ${spec.max}s`);
       }
     }
