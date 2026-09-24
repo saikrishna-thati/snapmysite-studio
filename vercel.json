@@ -14,6 +14,30 @@
       "destination": "/studio/index.html"
     },
     {
+      "source": "/cue.css",
+      "destination": "/studio/cue.css"
+    },
+    {
+      "source": "/studio.css",
+      "destination": "/studio/studio.css"
+    },
+    {
+      "source": "/experience.css",
+      "destination": "/studio/experience.css"
+    },
+    {
+      "source": "/favicon.svg",
+      "destination": "/studio/favicon.svg"
+    },
+    {
+      "source": "/js/(.*)",
+      "destination": "/studio/js/$1"
+    },
+    {
+      "source": "/audio/(.*)",
+      "destination": "/studio/audio/$1"
+    },
+    {
       "source": "/studio/(.*)",
       "destination": "/studio/$1"
     }
