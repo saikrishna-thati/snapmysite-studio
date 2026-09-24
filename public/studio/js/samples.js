@@ -451,7 +451,7 @@ export const SAMPLES = [
     style: "kinetic",
     motionVariation: "mv011",
     note: "Product planning",
-    aspect: "9:16",
+    aspect: "16:9",
     direction: {
       concept: "Build, review, ship as three vertical stations; the camera flies from one to the next.",
       structure: ["track", "stat", "logos", "feature", "split", "depthReveal", "screen", "endcard"],
@@ -492,7 +492,7 @@ export const SAMPLES = [
     style: "mono",
     motionVariation: "mv012",
     note: "Support desk",
-    aspect: "9:16",
+    aspect: "16:9",
     direction: {
       concept: "Warmth at speed; start on a real reply being written, then track across the shared inbox as it calms.",
       structure: ["flyin", "scroll", "matchcut", "statement", "split", "stat", "feature", "flashword", "endcard"],

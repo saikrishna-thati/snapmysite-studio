@@ -158,59 +158,62 @@ function paintMini(c) {
   c.scenes.forEach((s) => { const d = document.createElement("div"); d.style.flex = "1"; d.style.setProperty("--c", c.palette.accent); d.textContent = s.type; box.appendChild(d); });
 }
 function reelInit() {
+  const reel = $("reel"); if (!reel) return;
+
   const reelObserver = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
+    entries.forEach(async (entry) => {
       const frame = entry.target;
+      const player = frame.querySelector("hyperframes-player");
       if (entry.isIntersecting) {
-        if (!frame.classList.contains("playing")) {
-          frame.dispatchEvent(new MouseEvent("mouseenter"));
+        if (!player) {
+          if (frame.dataset.loading === "true") return;
+          frame.dataset.loading = "true";
+          const idx = Number(frame.dataset.index);
+          const s = SAMPLES[idx];
+          if (!s) return;
+          try {
+            const { brief, plan } = await prepareSample(s);
+            if (frame.querySelector("hyperframes-player")) return;
+            const comp = compose(brief, plan, { aspect: "16:9" });
+            const p = document.createElement("hyperframes-player");
+            p.className = "hfp";
+            p.setAttribute("muted", "");
+            p.setAttribute("loop", "");
+            p.setAttribute("autoplay", "");
+            if (comp.width) p.setAttribute("width", String(comp.width));
+            if (comp.height) p.setAttribute("height", String(comp.height));
+            p.setAttribute("srcdoc", comp.html);
+            frame.prepend(p);
+            p.addEventListener("ready", () => {
+              frame.classList.add("playing");
+              p.play?.();
+            }, { once: true });
+          } catch (err) {
+            console.warn("[reel] autoplay mount failed for", s?.brief?.name, err);
+          } finally {
+            frame.dataset.loading = "false";
+          }
         } else {
-          frame.querySelector("hyperframes-player")?.play?.();
+          frame.classList.add("playing");
+          player.play?.();
         }
       } else {
-        frame.querySelector("hyperframes-player")?.pause?.();
+        if (player) {
+          player.pause?.();
+        }
       }
     });
-  }, { threshold: 0.2 });
+  }, { threshold: 0.1, rootMargin: "150px 0px" });
 
-  const reel = $("reel"); if (!reel) return;
-  let active = null;
   SAMPLES.forEach((s, i) => {
     const P = palette({ colors: s.brief.colors }, STYLES[s.style]);
-    const aspect = s.aspect || "16:9";
+    const aspect = "16:9";
     const flagship = Boolean(s.direction?.hero);
     const fig = document.createElement("figure");
-    fig.className = `fig fig--${aspect.replace(":", "-")}`;
-    fig.innerHTML = `<div class="frame" tabindex="0" role="button" aria-label="Play ${s.brief.name} sample" style="aspect-ratio:${aspect.replace(":", " / ")}"><div class="poster" style="--pbg:${P.bg};--pc:${P.field};--pfg:${P.fg}"><i></i><span class="poster-tag mono small">${STYLES[s.style].label} · ${s.note}</span><b>${s.brief.headline}</b></div><span class="poster-ratio mono small">${aspect}</span><span class="play-hint mono small">Play</span></div><figcaption><b>${s.brief.name}</b><span class="muted">${s.brief.domain}</span></figcaption>`;
+    fig.className = "fig fig--16-9";
+    fig.innerHTML = `<div class="frame" data-index="${i}" tabindex="0" role="button" aria-label="Play ${s.brief.name} sample" style="aspect-ratio:16 / 9"><div class="poster" style="--pbg:${P.bg};--pc:${P.field};--pfg:${P.fg}"><i></i><span class="poster-tag mono small">${STYLES[s.style].label} · ${s.note}</span><b>${s.brief.headline}</b></div><span class="play-hint mono small">Play</span></div><figcaption><b>${s.brief.name}</b><span class="muted">${s.brief.domain}</span></figcaption>`;
     const frame = fig.querySelector(".frame");
     if (flagship) frame.setAttribute("data-hero", "1");
-    const verify = (comp, brief, plan) => {
-      import("./verify.js").then((m) => {
-        if (typeof m.verifyFilm !== "function") return;
-        const v = m.verifyFilm(brief, plan, comp);
-        if (!v || v.ok) return;
-        frame.setAttribute("data-verify", "fail");
-        console.warn(`[reel] ${s.brief.name} verification failed`, v.issues);
-      }).catch(() => {});
-    };
-    const play = async () => {
-      if (active && active !== frame) { active.querySelector("hyperframes-player")?.remove(); active.classList.remove("playing"); }
-      active = frame;
-      if (!frame.querySelector("hyperframes-player")) {
-        const { brief, plan } = await prepareSample(s);
-        if (active !== frame || frame.querySelector("hyperframes-player")) return;
-        const comp = compose(brief, plan, { aspect });
-        const p = document.createElement("hyperframes-player"); p.className = "hfp"; p.setAttribute("muted", ""); p.setAttribute("loop", ""); p.setAttribute("autoplay", "");
-        if (comp.width) p.setAttribute("width", String(comp.width));
-        if (comp.height) p.setAttribute("height", String(comp.height));
-        p.setAttribute("srcdoc", comp.html); frame.prepend(p);
-        p.addEventListener("ready", () => frame.classList.add("playing"), { once: true });
-        verify(comp);
-      } else { frame.classList.add("playing"); frame.querySelector("hyperframes-player").play?.(); }
-      active = frame;
-    };
-    frame.addEventListener("mouseenter", play); frame.addEventListener("focus", play);
-    frame.addEventListener("mouseleave", () => frame.querySelector("hyperframes-player")?.pause?.());
     frame.addEventListener("click", () => openSample(s));
     reel.appendChild(fig);
     reelObserver.observe(frame);
