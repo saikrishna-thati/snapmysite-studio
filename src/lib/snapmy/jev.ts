@@ -1,13 +1,24 @@
 // Subagents 2 & 3: JEV Dual-Pass Decision & Verification Engine
+import { getEnv } from "../env";
+
 const JEV_API_BASE = "https://api.typesafe.ai/v1";
 
+export interface JevSemanticDecision {
+  verified: boolean;
+  motion_tone: string;
+  top_3_features: string[];
+  hero_statement: string;
+  verification_audit: {
+    pass1: string;
+    pass2: string;
+    timestamp: string;
+  };
+  elementId?: string;
+  motionVector?: string;
+}
+
 function getJevKeys(): string[] {
-  const envVal = process.env["JEV_API_KEYS"] || process.env["TYPESAFE_JEV_KEY"];
-  if (!envVal) return [];
-  return envVal
-    .split(",")
-    .map((k) => k.trim())
-    .filter(Boolean);
+  return getEnv().JEV_API_KEYS;
 }
 
 let activeKeyIndex = 0;
@@ -39,7 +50,10 @@ async function callJevGateway(state: any, questions: any): Promise<any> {
   return { error: "all_jev_keys_exhausted" };
 }
 
-export async function jevDecideWithVerification(brief: any, spatialElements: any[]): Promise<any> {
+export async function jevDecideWithVerification(
+  brief: any,
+  spatialElements: any[] = [],
+): Promise<JevSemanticDecision> {
   // Pass 1: Primary Decision
   const pass1Questions = {
     brand_identity: {

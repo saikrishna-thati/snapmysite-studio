@@ -1,122 +1,141 @@
-// SnapMySite Studio App Entry Point
-import { SHOWCASE_SAMPLES } from "./samples.js";
-import { CursorRig } from "./cursor-rig.js";
-import { ALL_100_TRANSITIONS, generateRemixVariation } from "./composer.js";
-import { AudioEngine } from "./score.js";
+/**
+ * SnapMySite Studio Showcase Reel Runner
+ * Autoplay on scroll with viewport intersection observer, RAF leak prevention,
+ * and lightweight performance metrics monitoring.
+ */
+
+// Lightweight performance monitor
+window.__SNAPMY_METRICS = {
+  reels: {},
+  audio: {},
+  recordFrame: function (reelId, frameDurationMs) {
+    if (!this.reels[reelId]) {
+      this.reels[reelId] = { frames: 0, totalMs: 0, maxMs: 0, droppedFrames: 0 };
+    }
+    const r = this.reels[reelId];
+    r.frames++;
+    r.totalMs += frameDurationMs;
+    if (frameDurationMs > r.maxMs) r.maxMs = frameDurationMs;
+    if (frameDurationMs > 33.3) r.droppedFrames++; // >33.3ms implies drop below 30fps
+  },
+  getSummary: function () {
+    const summary = {};
+    for (const [id, data] of Object.entries(this.reels)) {
+      summary[id] = {
+        avgFps: data.frames > 0 ? Math.round((data.frames / (data.totalMs / 1000)) * 10) / 10 : 0,
+        maxFrameMs: Math.round(data.maxMs * 10) / 10,
+        droppedFrames: data.droppedFrames,
+      };
+    }
+    return summary;
+  },
+};
 
 document.addEventListener("DOMContentLoaded", () => {
-  const showcaseGrid = document.getElementById("showcase-grid");
-  const audioEngine = new AudioEngine();
-  const cursorRig = new CursorRig(document.body);
+  const showcaseContainer = document.getElementById("showcase-grid");
   const activeAnimationHandles = new Map();
 
-  // Initialize Showcase Grid with 12 Distinct Identities
-  if (showcaseGrid) {
-    showcaseGrid.innerHTML = "";
-    SHOWCASE_SAMPLES.forEach((sample, index) => {
-      const card = document.createElement("div");
-      card.className =
-        "showcase-card rounded-2xl overflow-hidden border border-white/10 bg-slate-900/60 p-5 hover:border-blue-500/40 transition-all duration-300";
-      card.innerHTML = `
-        <div class="aspect-video relative rounded-xl overflow-hidden bg-slate-950 border border-white/5 mb-4 group">
-          <canvas id="canvas-reel-${index}" class="w-full h-full object-cover" width="640" height="360"></canvas>
-          <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent flex items-end p-4">
-            <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
-              ${sample.duration} • ${sample.aesthetic}
-            </span>
-          </div>
-        </div>
-        <h3 class="text-lg font-bold text-white mb-1">${sample.title}</h3>
-        <p class="text-xs text-slate-400 line-clamp-2">${sample.description}</p>
-      `;
-      showcaseGrid.appendChild(card);
-    });
+  const showcaseIdentities = [
+    { id: "saas-velocity", name: "SaaS Velocity", palette: ["#6366f1", "#06b6d4", "#3b82f6"] },
+    { id: "fintech-trust", name: "Fintech Trust", palette: ["#10b981", "#059669", "#047857"] },
+    { id: "ai-synth", name: "AI Synth", palette: ["#ec4899", "#8b5cf6", "#d946ef"] },
+    { id: "crypto-frontier", name: "Crypto Frontier", palette: ["#f59e0b", "#d97706", "#b45309"] },
+    { id: "minimal-mono", name: "Minimal Mono", palette: ["#f8fafc", "#94a3b8", "#0f172a"] },
+    { id: "editorial-lux", name: "Editorial Lux", palette: ["#e2d9cc", "#c5a880", "#1c1917"] },
+    { id: "cyber-punk", name: "Cyber Punk", palette: ["#00ff66", "#00f0ff", "#ff003c"] },
+    { id: "dev-terminal", name: "Dev Terminal", palette: ["#22c55e", "#15803d", "#052e16"] },
+    { id: "flow-motion", name: "Flow Motion", palette: ["#38bdf8", "#818cf8", "#c084fc"] },
+    { id: "neo-brutal", name: "Neo Brutal", palette: ["#ffdf00", "#ff007f", "#000000"] },
+    { id: "zenith-clean", name: "Zenith Clean", palette: ["#ffffff", "#cbd5e1", "#475569"] },
+    { id: "hyper-kinetic", name: "Hyper Kinetic", palette: ["#ff3366", "#33ccff", "#ffff33"] },
+  ];
 
-    // Zero-Lag IntersectionObserver with active RAF teardown
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const canvas = entry.target.querySelector("canvas");
-          if (!canvas) return;
-          const canvasId = canvas.id;
+  if (!showcaseContainer) return;
 
-          if (entry.isIntersecting) {
-            canvas.dataset.playing = "true";
-            if (!activeAnimationHandles.has(canvasId)) {
-              startCanvasLoop(canvas, canvasId, activeAnimationHandles);
-            }
-          } else {
-            canvas.dataset.playing = "false";
-            const handle = activeAnimationHandles.get(canvasId);
-            if (handle) {
-              cancelAnimationFrame(handle);
-              activeAnimationHandles.delete(canvasId);
-            }
+  function startCanvasLoop(canvas, identity) {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let startTime = performance.now();
+    let lastFrameTime = performance.now();
+
+    function render(now) {
+      const delta = now - lastFrameTime;
+      lastFrameTime = now;
+      window.__SNAPMY_METRICS.recordFrame(identity.id, delta);
+
+      const elapsed = (now - startTime) / 1000;
+      const w = canvas.width;
+      const h = canvas.height;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Background gradient
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      grad.addColorStop(0, identity.palette[0]);
+      grad.addColorStop(1, identity.palette[1] || identity.palette[0]);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Subtle dynamic plane animation
+      const offsetX = Math.sin(elapsed * 1.5) * (w * 0.1);
+      const offsetY = Math.cos(elapsed * 1.2) * (h * 0.08);
+
+      ctx.save();
+      ctx.translate(w / 2 + offsetX, h / 2 + offsetY);
+      ctx.rotate(Math.sin(elapsed * 0.5) * 0.1);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
+      ctx.fillRect(-w * 0.35, -h * 0.3, w * 0.7, h * 0.6);
+      ctx.restore();
+
+      const handle = requestAnimationFrame(render);
+      activeAnimationHandles.set(canvas, handle);
+    }
+
+    const handle = requestAnimationFrame(render);
+    activeAnimationHandles.set(canvas, handle);
+  }
+
+  function stopCanvasLoop(canvas) {
+    const handle = activeAnimationHandles.get(canvas);
+    if (handle) {
+      cancelAnimationFrame(handle);
+      activeAnimationHandles.delete(canvas);
+    }
+  }
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const canvas = entry.target.querySelector("canvas");
+        if (!canvas) return;
+
+        if (entry.isIntersecting) {
+          const identity = showcaseIdentities.find((i) => i.id === canvas.dataset.identityId);
+          if (identity && !activeAnimationHandles.has(canvas)) {
+            startCanvasLoop(canvas, identity);
           }
-        });
-      },
-      { threshold: 0.15 },
-    );
+        } else {
+          stopCanvasLoop(canvas);
+        }
+      });
+    },
+    { threshold: 0.15 },
+  );
 
-    document.querySelectorAll(".showcase-card").forEach((el) => observer.observe(el));
-  }
-
-  // Interactive URL Generation Form
-  const launchForm = document.getElementById("launch-form");
-  if (launchForm) {
-    launchForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const input = document.getElementById("target-url");
-      const url = input?.value || "https://linear.app";
-
-      audioEngine.playFoley("ui_tick");
-      cursorRig.click("#generate-btn");
-
-      console.log(`[SnapMySite] Launching autonomous direction for ${url}...`);
-    });
-  }
+  showcaseIdentities.forEach((id) => {
+    const card = document.createElement("div");
+    card.className =
+      "showcase-card rounded-xl overflow-hidden border border-slate-800 bg-slate-900";
+    card.innerHTML = `
+      <div class="aspect-[9/16] relative bg-black">
+        <canvas width="360" height="640" class="w-full h-full" data-identity-id="${id.id}"></canvas>
+        <div class="absolute bottom-3 left-3 text-white text-xs font-medium tracking-wide bg-black/60 px-2 py-1 rounded backdrop-blur">
+          ${id.name}
+        </div>
+      </div>
+    `;
+    showcaseContainer.appendChild(card);
+    observer.observe(card);
+  });
 });
-
-function startCanvasLoop(canvas, id, handlesMap) {
-  const ctx = canvas.getContext("2d");
-  let frame = 0;
-
-  const loop = () => {
-    if (canvas.dataset.playing !== "true") {
-      handlesMap.delete(id);
-      return;
-    }
-    frame++;
-
-    // High performance procedural motion demo preview
-    ctx.fillStyle = "#090d16";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Glowing motion grid
-    ctx.strokeStyle = "rgba(59, 130, 246, 0.15)";
-    ctx.lineWidth = 1;
-    for (let x = 0; x < canvas.width; x += 40) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
-      ctx.stroke();
-    }
-
-    // Dynamic wave
-    ctx.beginPath();
-    ctx.strokeStyle = "#3b82f6";
-    ctx.lineWidth = 3;
-    for (let x = 0; x < canvas.width; x += 5) {
-      const y = canvas.height / 2 + Math.sin((x + frame * 3) * 0.02) * 40;
-      if (x === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    const handle = requestAnimationFrame(loop);
-    handlesMap.set(id, handle);
-  };
-
-  const initialHandle = requestAnimationFrame(loop);
-  handlesMap.set(id, initialHandle);
-}

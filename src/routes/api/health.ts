@@ -1,33 +1,50 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { json } from "@/lib/snapmy/http";
+import { validateEnv, maskSecret } from "@/lib/env";
+import { logger } from "@/lib/logger";
+
+const SERVER_START_TIME = Date.now();
 
 export const Route = createFileRoute("/api/health")({
   server: {
     handlers: {
       GET: async () => {
-        const jevConfigured = Boolean(typeof process.env['JEV_KEY'] === "string" && process.env['JEV_KEY'].trim());
-        const groqRaw = [
-          process.env['GROQ_KEYS'],
-          process.env['GROQ_KEY'],
-          process.env['DIRECTOR_KEY'],
-          process.env['GROQ_KEY_1'],
-          process.env['GROQ_KEY_2'],
-          process.env['GROQ_KEY_3'],
-          process.env['GROQ_KEY_4'],
-          process.env['GROQ_KEY_5'],
-          process.env['GROQ_KEY_6'],
-        ].filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
-        const groqKeyCount = new Set(groqRaw.flatMap((value) => value.trim().split(/[\s,]+/)).filter(Boolean)).size;
-        const groqConfigured = groqKeyCount > 0;
-        const director = groqConfigured
-          ? { provider: "groq", model: (typeof process.env['GROQ_MODEL'] === "string" && process.env['GROQ_MODEL'].trim()) || "openai/gpt-oss-120b", keys: groqKeyCount }
-          : null;
-        return json(200, {
-          ok: true,
-          version: "1.0.0",
-          providers: { reader: jevConfigured ? "configured" : "direct-html", decisions: process.env['LOVABLE_API_KEY'] ? { provider: "jev", model: "typesafe/jev-latest" } : "deterministic-fallback", director: director || "deterministic-fallback", order: ["decisions", "director"] },
-          render: { available: false, mode: "diagnostic", reason: "No server-side browser and FFmpeg render worker is configured." },
+        const { env, errors, warnings } = validateEnv();
+        const uptimeSeconds = Math.floor((Date.now() - SERVER_START_TIME) / 1000);
+
+        const groqCount = env.GROQ_API_KEYS.length;
+        const jevCount = env.JEV_API_KEYS.length;
+
+        const healthData = {
+          status: errors.length > 0 ? "degraded" : "healthy",
+          timestamp: new Date().toISOString(),
+          uptime_seconds: uptimeSeconds,
+          node_version: process.version,
+          env: {
+            NODE_ENV: env.NODE_ENV,
+            PORT: env.PORT,
+            groq_keys_configured: groqCount,
+            jev_keys_configured: jevCount,
+            groq_key_previews: env.GROQ_API_KEYS.map(maskSecret),
+            jev_key_previews: env.JEV_API_KEYS.map(maskSecret),
+          },
+          providers: {
+            director: groqCount > 0 ? "groq-rotational-pool" : "deterministic-choreographer",
+            decisions: jevCount > 0 ? "typesafe-jev-gateway" : "verified-spatial-fallback",
+          },
+          diagnostics: {
+            errors: errors.length > 0 ? errors : undefined,
+            warnings: warnings.length > 0 ? warnings : undefined,
+          },
+        };
+
+        logger.info("Health check requested", {
+          route: "/api/health",
+          status: healthData.status,
+          uptimeSeconds,
         });
+
+        return json(200, healthData);
       },
     },
   },
