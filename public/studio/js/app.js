@@ -1,20 +1,22 @@
 // SnapMySite Studio App Entry Point
-import { SHOWCASE_SAMPLES } from './samples.js';
-import { CursorRig } from './cursor-rig.js';
-import { ALL_100_TRANSITIONS, generateRemixVariation } from './composer.js';
-import { AudioEngine } from './score.js';
+import { SHOWCASE_SAMPLES } from "./samples.js";
+import { CursorRig } from "./cursor-rig.js";
+import { ALL_100_TRANSITIONS, generateRemixVariation } from "./composer.js";
+import { AudioEngine } from "./score.js";
 
-document.addEventListener('DOMContentLoaded', () => {
-  const showcaseGrid = document.getElementById('showcase-grid');
+document.addEventListener("DOMContentLoaded", () => {
+  const showcaseGrid = document.getElementById("showcase-grid");
   const audioEngine = new AudioEngine();
   const cursorRig = new CursorRig(document.body);
+  const activeAnimationHandles = new Map();
 
   // Initialize Showcase Grid with 12 Distinct Identities
   if (showcaseGrid) {
-    showcaseGrid.innerHTML = '';
+    showcaseGrid.innerHTML = "";
     SHOWCASE_SAMPLES.forEach((sample, index) => {
-      const card = document.createElement('div');
-      card.className = 'showcase-card rounded-2xl overflow-hidden border border-white/10 bg-slate-900/60 p-5 hover:border-blue-500/40 transition-all duration-300';
+      const card = document.createElement("div");
+      card.className =
+        "showcase-card rounded-2xl overflow-hidden border border-white/10 bg-slate-900/60 p-5 hover:border-blue-500/40 transition-all duration-300";
       card.innerHTML = `
         <div class="aspect-video relative rounded-xl overflow-hidden bg-slate-950 border border-white/5 mb-4 group">
           <canvas id="canvas-reel-${index}" class="w-full h-full object-cover" width="640" height="360"></canvas>
@@ -30,55 +32,68 @@ document.addEventListener('DOMContentLoaded', () => {
       showcaseGrid.appendChild(card);
     });
 
-    // Zero-Lag IntersectionObserver for 60fps Autoplay
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        const canvas = entry.target.querySelector('canvas');
-        if (!canvas) return;
-        if (entry.isIntersecting) {
-          canvas.dataset.playing = 'true';
-          renderCanvasPreview(canvas);
-        } else {
-          canvas.dataset.playing = 'false';
-        }
-      });
-    }, { threshold: 0.15 });
+    // Zero-Lag IntersectionObserver with active RAF teardown
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const canvas = entry.target.querySelector("canvas");
+          if (!canvas) return;
+          const canvasId = canvas.id;
 
-    document.querySelectorAll('.showcase-card').forEach((el) => observer.observe(el));
+          if (entry.isIntersecting) {
+            canvas.dataset.playing = "true";
+            if (!activeAnimationHandles.has(canvasId)) {
+              startCanvasLoop(canvas, canvasId, activeAnimationHandles);
+            }
+          } else {
+            canvas.dataset.playing = "false";
+            const handle = activeAnimationHandles.get(canvasId);
+            if (handle) {
+              cancelAnimationFrame(handle);
+              activeAnimationHandles.delete(canvasId);
+            }
+          }
+        });
+      },
+      { threshold: 0.15 },
+    );
+
+    document.querySelectorAll(".showcase-card").forEach((el) => observer.observe(el));
   }
 
   // Interactive URL Generation Form
-  const launchForm = document.getElementById('launch-form');
+  const launchForm = document.getElementById("launch-form");
   if (launchForm) {
-    launchForm.addEventListener('submit', async (e) => {
+    launchForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const input = document.getElementById('target-url');
-      const url = input?.value || 'https://linear.app';
+      const input = document.getElementById("target-url");
+      const url = input?.value || "https://linear.app";
 
-      audioEngine.playFoley('ui_tick');
-      cursorRig.click('#generate-btn');
+      audioEngine.playFoley("ui_tick");
+      cursorRig.click("#generate-btn");
 
-      // Trigger generation pipeline
       console.log(`[SnapMySite] Launching autonomous direction for ${url}...`);
     });
   }
 });
 
-function renderCanvasPreview(canvas) {
-  if (canvas.dataset.playing !== 'true') return;
-  const ctx = canvas.getContext('2d');
+function startCanvasLoop(canvas, id, handlesMap) {
+  const ctx = canvas.getContext("2d");
   let frame = 0;
 
   const loop = () => {
-    if (canvas.dataset.playing !== 'true') return;
+    if (canvas.dataset.playing !== "true") {
+      handlesMap.delete(id);
+      return;
+    }
     frame++;
 
     // High performance procedural motion demo preview
-    ctx.fillStyle = '#090d16';
+    ctx.fillStyle = "#090d16";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Glowing motion grid
-    ctx.strokeStyle = 'rgba(59, 130, 246, 0.15)';
+    ctx.strokeStyle = "rgba(59, 130, 246, 0.15)";
     ctx.lineWidth = 1;
     for (let x = 0; x < canvas.width; x += 40) {
       ctx.beginPath();
@@ -89,7 +104,7 @@ function renderCanvasPreview(canvas) {
 
     // Dynamic wave
     ctx.beginPath();
-    ctx.strokeStyle = '#3b82f6';
+    ctx.strokeStyle = "#3b82f6";
     ctx.lineWidth = 3;
     for (let x = 0; x < canvas.width; x += 5) {
       const y = canvas.height / 2 + Math.sin((x + frame * 3) * 0.02) * 40;
@@ -98,7 +113,10 @@ function renderCanvasPreview(canvas) {
     }
     ctx.stroke();
 
-    requestAnimationFrame(loop);
+    const handle = requestAnimationFrame(loop);
+    handlesMap.set(id, handle);
   };
-  requestAnimationFrame(loop);
+
+  const initialHandle = requestAnimationFrame(loop);
+  handlesMap.set(id, initialHandle);
 }

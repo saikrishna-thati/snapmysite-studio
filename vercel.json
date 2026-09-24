@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "buildCommand": "bun run build",
+  "installCommand": "bun install",
+  "outputDirectory": "dist/client",
+  "framework": "vite",
+  "cleanUrls": true,
+  "routes": [
+    {
+      "src": "^/studio/(.*)",
+      "dest": "/studio/$1"
+    },
+    {
+      "src": "^/studio$",
+      "dest": "/studio/index.html"
+    },
+    {
+      "src": "^/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/.*",
+      "dest": "/studio/index.html"
+    }
+  ]
+}

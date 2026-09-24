@@ -1,84 +1,95 @@
 // Subagent 8: 100-Preset Dynamic Audio & Foley Architecture
-
-export const AUDIO_PRESETS_100 = {
-  tech_saas: Array.from({ length: 25 }, (_, i) => ({
-    id: `tech_saas_${i + 1}`,
-    name: `Silicon Pulse ${i + 1}`,
-    genre: 'Tech / SaaS',
-    bpm: 118 + (i % 8) * 2,
-    stems: ['synth_lead', 'sub_bass', 'digital_hihat', 'foley_ticks'],
-    mood: 'Focused, precise, developer-first'
-  })),
-
-  cinematic_hero: Array.from({ length: 25 }, (_, i) => ({
-    id: `cinematic_hero_${i + 1}`,
-    name: `Ascendant Reveal ${i + 1}`,
-    genre: 'Cinematic Hero Launch',
-    bpm: 96 + (i % 6) * 4,
-    stems: ['strings_swell', 'braam_low', 'sub_thud', 'impact_snare'],
-    mood: 'Epic, expansive, monumental'
-  })),
-
-  kinetic_energy: Array.from({ length: 25 }, (_, i) => ({
-    id: `kinetic_${i + 1}`,
-    name: `Velocity Rush ${i + 1}`,
-    genre: 'High-Energy Kinetic',
-    bpm: 132 + (i % 7) * 3,
-    stems: ['breakbeat', 'acid_bass', 'glitch_riser', 'hand_claps'],
-    mood: 'Fast-paced, relentless, athletic'
-  })),
-
-  ambient_luxury: Array.from({ length: 25 }, (_, i) => ({
-    id: `luxury_${i + 1}`,
-    name: `Editorial Atmosphere ${i + 1}`,
-    genre: 'Ambient & Luxury',
-    bpm: 84 + (i % 5) * 3,
-    stems: ['warm_rhodes', 'vinyl_dust', 'soft_piano', 'binaural_pad'],
-    mood: 'Sophisticated, serene, prestigious'
-  }))
-};
-
 export class AudioEngine {
   constructor() {
     this.ctx = null;
-    this.activePreset = AUDIO_PRESETS_100.tech_saas[0];
+    this.masterGain = null;
+    this.audioPool = new Map();
+    this.initialized = false;
   }
 
-  init() {
-    if (!this.ctx) {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  ensureContext() {
+    if (
+      !this.ctx &&
+      typeof window !== "undefined" &&
+      (window.AudioContext || window.webkitAudioContext)
+    ) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.setValueAtTime(0.8, this.ctx.currentTime);
+      this.masterGain.connect(this.ctx.destination);
+    }
+    if (this.ctx && this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {});
     }
   }
 
-  playFoley(cueType = 'ui_tick') {
-    this.init();
+  // 100 Presets across 4 sonic categories
+  static PRESETS = {
+    tech_saas: Array.from({ length: 25 }, (_, i) => ({
+      id: `tech_pulse_${i + 1}`,
+      bpm: 118 + (i % 8) * 2,
+      scale: ["C4", "Eb4", "F4", "G4", "Bb4"],
+      mood: "driving_minimal",
+    })),
+    cinematic_hero: Array.from({ length: 25 }, (_, i) => ({
+      id: `hero_swell_${i + 1}`,
+      bpm: 90 + (i % 6) * 4,
+      scale: ["D3", "A3", "C4", "E4", "G4"],
+      mood: "epic_orchestral",
+    })),
+    kinetic_speed: Array.from({ length: 25 }, (_, i) => ({
+      id: `kinetic_break_${i + 1}`,
+      bpm: 130 + (i % 10) * 2,
+      scale: ["F3", "Ab3", "C4", "Eb4", "G4"],
+      mood: "high_energy_breakbeat",
+    })),
+    ambient_luxury: Array.from({ length: 25 }, (_, i) => ({
+      id: `luxury_warmth_${i + 1}`,
+      bpm: 75 + (i % 5) * 3,
+      scale: ["A3", "C#4", "E4", "G#4", "B4"],
+      mood: "warm_rhodes_vinyl",
+    })),
+  };
+
+  playFoley(cue = "ui_tick") {
+    this.ensureContext();
     if (!this.ctx) return;
 
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    const now = this.ctx.currentTime;
 
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-
-    if (cueType.includes('tick') || cueType.includes('click')) {
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(1200, now);
-      osc.frequency.exponentialRampToValueAtTime(120, now + 0.04);
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
-      osc.start(now);
-      osc.stop(now + 0.05);
-    } else if (cueType.includes('woosh')) {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(180, now);
-      osc.frequency.exponentialRampToValueAtTime(600, now + 0.18);
-      osc.frequency.exponentialRampToValueAtTime(80, now + 0.35);
-      gain.gain.setValueAtTime(0.01, now);
-      gain.gain.linearRampToValueAtTime(0.2, now + 0.15);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-      osc.start(now);
-      osc.stop(now + 0.36);
+    if (cue === "ui_tick") {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1400, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(300, this.ctx.currentTime + 0.04);
+      gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.04);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.04);
+    } else if (cue === "sfx_woosh_heavy") {
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(220, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(60, this.ctx.currentTime + 0.35);
+      gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.35);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.35);
+    } else {
+      // standard click
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.06);
+      gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.06);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.06);
     }
   }
 }
