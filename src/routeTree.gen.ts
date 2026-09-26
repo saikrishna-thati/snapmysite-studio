@@ -10,26 +10,20 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiAnimaticRouteImport } from './routes/api/animatic'
-import { Route as ApiContactsheetRouteImport } from './routes/api/contactsheet'
+import { Route as StudioRouteImport } from './routes/studio'
 import { Route as ApiDirectRouteImport } from './routes/api/direct'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiReadRouteImport } from './routes/api/read'
-import { Route as ApiStoryboardRouteImport } from './routes/api/storyboard'
+import { Route as ApiShotRouteImport } from './routes/api/shot'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAnimaticRoute = ApiAnimaticRouteImport.update({
-  id: '/api/animatic',
-  path: '/api/animatic',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiContactsheetRoute = ApiContactsheetRouteImport.update({
-  id: '/api/contactsheet',
-  path: '/api/contactsheet',
+const StudioRoute = StudioRouteImport.update({
+  id: '/studio',
+  path: '/studio',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDirectRoute = ApiDirectRouteImport.update({
@@ -47,78 +41,61 @@ const ApiReadRoute = ApiReadRouteImport.update({
   path: '/api/read',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiStoryboardRoute = ApiStoryboardRouteImport.update({
-  id: '/api/storyboard',
-  path: '/api/storyboard',
+const ApiShotRoute = ApiShotRouteImport.update({
+  id: '/api/shot',
+  path: '/api/shot',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/api/animatic': typeof ApiAnimaticRoute
-  '/api/contactsheet': typeof ApiContactsheetRoute
+  '/studio': typeof StudioRoute
   '/api/direct': typeof ApiDirectRoute
   '/api/health': typeof ApiHealthRoute
   '/api/read': typeof ApiReadRoute
-  '/api/storyboard': typeof ApiStoryboardRoute
+  '/api/shot': typeof ApiShotRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/api/animatic': typeof ApiAnimaticRoute
-  '/api/contactsheet': typeof ApiContactsheetRoute
+  '/studio': typeof StudioRoute
   '/api/direct': typeof ApiDirectRoute
   '/api/health': typeof ApiHealthRoute
   '/api/read': typeof ApiReadRoute
-  '/api/storyboard': typeof ApiStoryboardRoute
+  '/api/shot': typeof ApiShotRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/api/animatic': typeof ApiAnimaticRoute
-  '/api/contactsheet': typeof ApiContactsheetRoute
+  '/studio': typeof StudioRoute
   '/api/direct': typeof ApiDirectRoute
   '/api/health': typeof ApiHealthRoute
   '/api/read': typeof ApiReadRoute
-  '/api/storyboard': typeof ApiStoryboardRoute
+  '/api/shot': typeof ApiShotRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
-    | '/api/animatic'
-    | '/api/contactsheet'
-    | '/api/direct'
-    | '/api/health'
-    | '/api/read'
-    | '/api/storyboard'
+    '/' | '/studio' | '/api/direct' | '/api/health' | '/api/read' | '/api/shot'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
-    | '/api/animatic'
-    | '/api/contactsheet'
-    | '/api/direct'
-    | '/api/health'
-    | '/api/read'
-    | '/api/storyboard'
+    '/' | '/studio' | '/api/direct' | '/api/health' | '/api/read' | '/api/shot'
   id:
     | '__root__'
     | '/'
-    | '/api/animatic'
-    | '/api/contactsheet'
+    | '/studio'
     | '/api/direct'
     | '/api/health'
     | '/api/read'
-    | '/api/storyboard'
+    | '/api/shot'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ApiAnimaticRoute: typeof ApiAnimaticRoute
-  ApiContactsheetRoute: typeof ApiContactsheetRoute
+  StudioRoute: typeof StudioRoute
   ApiDirectRoute: typeof ApiDirectRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiReadRoute: typeof ApiReadRoute
-  ApiStoryboardRoute: typeof ApiStoryboardRoute
+  ApiShotRoute: typeof ApiShotRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -130,18 +107,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/animatic': {
-      id: '/api/animatic'
-      path: '/api/animatic'
-      fullPath: '/api/animatic'
-      preLoaderRoute: typeof ApiAnimaticRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/contactsheet': {
-      id: '/api/contactsheet'
-      path: '/api/contactsheet'
-      fullPath: '/api/contactsheet'
-      preLoaderRoute: typeof ApiContactsheetRouteImport
+    '/studio': {
+      id: '/studio'
+      path: '/studio'
+      fullPath: '/studio'
+      preLoaderRoute: typeof StudioRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/direct': {
@@ -165,11 +135,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiReadRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/storyboard': {
-      id: '/api/storyboard'
-      path: '/api/storyboard'
-      fullPath: '/api/storyboard'
-      preLoaderRoute: typeof ApiStoryboardRouteImport
+    '/api/shot': {
+      id: '/api/shot'
+      path: '/api/shot'
+      fullPath: '/api/shot'
+      preLoaderRoute: typeof ApiShotRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -177,12 +147,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ApiAnimaticRoute: ApiAnimaticRoute,
-  ApiContactsheetRoute: ApiContactsheetRoute,
+  StudioRoute: StudioRoute,
   ApiDirectRoute: ApiDirectRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiReadRoute: ApiReadRoute,
-  ApiStoryboardRoute: ApiStoryboardRoute,
+  ApiShotRoute: ApiShotRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

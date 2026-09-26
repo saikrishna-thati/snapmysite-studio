@@ -3,8 +3,10 @@
 // only an explicit, non-secret brief is sent to a direction provider.
 import { API } from "./config.js";
 import { SCENE_TYPES, STYLES, resolveMotionVariation } from "./composer.js";
+import { TRANSITION_IDS } from "./transitions.js";
 
-const TRANSITIONS = ["whip", "zoom", "flash", "wipe", "iris", "push", "glitch", "blocks", "cut"];
+// Legacy names plus every id in the transition library are accepted from a plan.
+const TRANSITIONS = ["whip", "zoom", "flash", "wipe", "iris", "push", "glitch", "blocks", "cut", ...TRANSITION_IDS];
 const INTERACTIONS = ["hover", "click", "scroll", "tab", "toggle", "modal", "none"];
 const MEDIA_TYPES = new Set(["screen", "scroll", "split"]);
 const GENERIC_CTA = /^(get started|try it(?: free| today)?|learn more|sign up|join now|click here|submit|continue)$/i;

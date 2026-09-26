@@ -25,7 +25,8 @@ window.__SNAPMY_METRICS = {
 };
 
 // Snapmy.site studio — URL → read → direction → motion panel → launch film + original score.
-import { compose, fallbackPlan, STYLES, CUT, BEAT, palette } from "./composer.js";
+import { compose, fallbackPlan, STYLES, CUT, BEAT, palette, ASPECTS } from "./composer.js";
+import { exportSupported, renderMp4 } from "./export.js";
 import { renderScore } from "./score.js";
 import { api, backendStatus, readInBrowser, kimiInBrowser, guessDecisions, normalizePlan } from "./direction.js";
 import { API } from "./config.js";
@@ -98,6 +99,33 @@ function loadCapture(url, ms = 2000) {
   });
   captureCheck.set(url, p);
   return p;
+}
+// Loads every screenshot a brief points at (the capture service can take a few
+// seconds per page), records real dimensions, and drops the ones that failed so
+// the film never shows a broken frame.
+async function warmEvidence(brief) {
+  const urlOf = (v) => (typeof v === "string" ? v : v && v.url) || "";
+  const urls = [...new Set([
+    ...(brief.screenshots || []).map(urlOf),
+    ...(brief.evidenceAssets || []).map(urlOf),
+    ...(brief.screenshotCandidates || []).map(urlOf),
+    ...(brief.fullpages || []).map(urlOf),
+    urlOf(brief.fullpage),
+  ].filter((u) => /^https?:/i.test(u)))];
+  if (!urls.length) return brief;
+  const sizes = new Map(await Promise.all(urls.map(async (u) => [u, await loadCapture(u, 30000)])));
+  const ok = (v) => { const u = urlOf(v); return !sizes.has(u) || !!sizes.get(u); };
+  const sized = (a) => { const s = sizes.get(urlOf(a)); return s && a && typeof a === "object" ? { ...a, width: s.width, height: s.height } : a; };
+  const kept = urls.filter((u) => sizes.get(u)).length;
+  log(`Captured ${kept} of ${urls.length} screenshots`, kept ? "ok" : "warn");
+  return {
+    ...brief,
+    screenshots: (brief.screenshots || []).filter(ok),
+    evidenceAssets: (brief.evidenceAssets || []).filter(ok).map(sized),
+    screenshotCandidates: (brief.screenshotCandidates || []).filter(ok).map(sized),
+    fullpages: (brief.fullpages || []).filter(ok),
+    fullpage: ok(brief.fullpage) ? brief.fullpage : "",
+  };
 }
 // Validate captures, then drop product scenes whose capture is unavailable and
 // remap shot indices onto the surviving evidence. Never invents a panel.
@@ -284,10 +312,7 @@ async function run(url) {
   showStudio(); resetScan();
   $("studioTitle").textContent = url.replace(/^https?:\/\//, ""); $("studioStatus").textContent = "Reading";
   stage("home"); log("Opening " + url);
-  if (st.backend === null) {
-    const status = await refreshBackend();
-    if (status.ok && !st.render) log("Reader and director are online; MP4 export is not configured in this deployment.", "warn");
-  }
+  if (st.backend === null) await refreshBackend();
   let brief;
   try {
     if (st.backend) { log("Finding the pages that make your product matter"); stage("pages"); brief = (await api("/read", { url }, { timeout: 45000 })).brief; }
@@ -297,29 +322,21 @@ async function run(url) {
     brief = await readInBrowser(url);
   }
   if (tok !== st.token) return;
-  st.brief = brief;
   stage("assets");
+  log("Capturing page screenshots");
+  brief = await warmEvidence(brief);
+  if (tok !== st.token) return;
+  st.brief = brief;
   log(`Found ${brief.features.length} features · ${brief.stats.length} numbers · ${brief.quotes.length} quotes · ${brief.screenshots.length} screenshots`, "ok");
   if (brief.colors.length) log("Brand colors " + brief.colors.slice(0, 4).join(" "), "ok");
   $("studioTitle").textContent = brief.name; fillFacts();
   stage("direct"); $("studioStatus").textContent = "Directing";
-  let decisions = null, raw = null;
-  if (st.backend) {
-     log("Finding the strongest story angle");
-     log("Shaping the film direction around your product");
-     try {
-       const d = await api("/direct", { brief }, { timeout: 70000 });
-       decisions = d.decisions && d.decisions.style ? { ...d.decisions, layers: d.layers } : null; raw = d.plan;
-       if (d.brief) { brief = { ...brief, ...d.brief }; st.brief = brief; }
-       if (d.layers) log(`Decisions by ${d.layers.decisions === "jev" ? "JEV" : "built-in rules"} · creative pass by ${d.layers.creative === "groq" ? "Groq" : "built-in rules"}`, "ok");
-       const j = d.decisions?.jev; if (j) log(`JEV kept ${j.include.length} items, skipped ${j.skip.length} · ${j.motion.camera} camera`, "ok");
-       if (d.errors?.jev) log("Direction note: " + d.errors.jev.slice(0, 80), "warn");
-       const creative = d.errors ? Object.entries(d.errors).find(([key]) => key !== "jev") : null; if (creative) log("Creative note: " + creative[1].slice(0, 80), "warn");
-     } catch (e) { log("Direction call failed: " + e.message, "err"); }
-  }
-  if (!decisions) { decisions = guessDecisions(brief); log("Using the built-in style guess: " + STYLES[decisions.style].label, "warn"); }
-   else log(`Direction set → ${STYLES[decisions.style]?.label || decisions.style}`, "ok");
-   if (!raw) { try { log("Adding the final creative pass"); raw = await kimiInBrowser(brief, decisions); } catch (e) { log("Creative pass unavailable, using the built-in direction", "warn"); } }
+  // Direction runs in the browser.
+  log("Finding the strongest story angle");
+  const decisions = guessDecisions(brief);
+  let raw = null;
+  log(`Direction set → ${STYLES[decisions.style]?.label || decisions.style}`, "ok");
+  try { log("Adding the final creative pass"); raw = await kimiInBrowser(brief, decisions); } catch (e) { log("Creative pass unavailable, using the built-in direction", "warn"); }
   if (tok !== st.token) return;
   stage("panel");
   st.decisions = decisions; st.raw = raw;
@@ -432,80 +449,41 @@ $("remixBtn").addEventListener("click", async () => {
 $("newUrlBtn").addEventListener("click", () => { $("urlInput").value = ""; window.scrollTo({ top: 0, behavior: "smooth" }); $("urlInput").focus(); });
 
 /* ---------------- export ---------------- */
+// Rendered in the browser: frame-exact seek → canvas → WebCodecs → MP4 (see export.js).
 let exportJob = null;
 $("exportBtn").addEventListener("click", async () => {
-  if (!st.comp) return;
-  if (st.backend === null) await refreshBackend();
-  if (!st.backend || !st.render) { toast("MP4 rendering is not configured here. Download the project instead."); return; }
+  if (!st.comp || exportJob) return;
+  if (!exportSupported()) { toast("MP4 export needs a recent Chrome, Edge or Safari. Download the project instead."); return; }
   const style = st.style !== "auto" ? st.style : st.plan.style || "kinetic";
-   const html = compose(st.brief, { ...st.plan, style, motionVariation: st.plan.motionVariation || st.decisions?.motionVariation }, { aspect: st.aspect, seed: st.seed, audioSrc: st.score ? "score.wav" : undefined }).html;
-  const audio = st.score ? await blobToDataUrl(st.score.blob) : null;
-   $("exportOverlay").hidden = false; $("exportMeter").style.width = "2%"; $("exportPct").textContent = "Uploading"; $("exportLabel").textContent = "Rendering your launch film with Film Engine v2";
+  const [width, height] = ASPECTS[st.aspect] || ASPECTS["16:9"];
+  const comp = compose(st.brief, { ...st.plan, style, motionVariation: st.plan.motionVariation || st.decisions?.motionVariation }, { aspect: st.aspect, seed: st.seed });
+  const job = { cancelled: false }; exportJob = job;
+  const player = $("studioPlayer"); try { player.pause?.(); } catch {}
+  $("exportOverlay").hidden = false; $("exportMeter").style.width = "0%"; $("exportPct").textContent = "Preparing"; $("exportLabel").textContent = "Rendering your launch film";
   try {
-    // Use new Phase 6 render API with storyboard
-    const storyboard = {
-      url: st.brief.domain || st.brief.name,
-      product_name: st.brief.name,
-      timing: {
-        total_duration: st.comp.duration || 30,
-        fps: 60
-      },
-      shots: st.plan.scenes.map((scene, i) => ({
-        id: `shot_${i}`,
-        start_time: scene.start || (i * (st.comp.duration / st.plan.scenes.length)),
-        end_time: scene.end || ((i + 1) * (st.comp.duration / st.plan.scenes.length)),
-        camera_move: scene.transition || 'static',
-        camera_position: { x: 0, y: 0, z: 5 },
-        camera_target: { x: 0, y: 0, z: 0 },
-        hold_frame: scene.type === 'endcard',
-        on_screen_copy: scene.text || scene.title || scene.word || '',
-        evidence_assets: []
-      })),
-      evidence_assets: [],
-      audio: {
-        music_stem: audio,
-        voiceover_enabled: false
-      }
-    };
-    
-    const renderOptions = {
-      format: st.aspect,
-      fps: 60,
-      codec: 'libx264',
-      preset: 'slow',
-      crf: 18
-    };
-    
-    const response = await api("/render", { storyboard, options: renderOptions }, { timeout: 120000 });
-    const jobId = response.jobId;
-    exportJob = jobId; const started = Date.now();
-    while (exportJob === jobId) {
-      await sleep(1500);
-      const j = await api("/render?jobId=" + jobId, null, { timeout: 10000 }).catch(() => null);
-      if (!j) continue;
-      const guess = Math.min(95, ((Date.now() - started) / 1000 / (st.comp.duration * 5)) * 100);
-      const pct = Math.max(j.job?.progress || 0, guess);
-      $("exportMeter").style.width = pct + "%"; $("exportPct").textContent = j.job?.status === "rendering" ? Math.round(pct) + "%" : j.job?.status;
-       if (j.job?.status === "completed") { 
-         const a = $("downloadLink"); 
-         a.href = absApi("/render/download?jobId=" + jobId); 
-         a.download = `${st.brief.name}-snapmy-${st.aspect.replace(":", "x")}.mp4`; 
-         a.hidden = false; 
-         a.textContent = `Download MP4 (${st.aspect}, Film Engine v2)`; 
-         toast("Your film is ready with QC score: " + (j.job.qcResults?.score || "N/A")); 
-         break; 
-       }
-      if (j.job?.status === "failed") { toast("Render failed. Try again or download the project."); console.warn(j.job.error); break; }
+    const blob = await renderMp4({
+      html: comp.html, width, height, duration: comp.duration, audio: st.score?.blob || null, fps: 30,
+      isCancelled: () => job.cancelled,
+      onProgress: (f, label) => { if (exportJob !== job) return; $("exportMeter").style.width = (f * 100).toFixed(1) + "%"; $("exportPct").textContent = f > 0.02 && f < 0.99 ? Math.round(f * 100) + "%" : label; },
+    });
+    if (blob && !job.cancelled) {
+      const a = $("downloadLink");
+      if (a.href && a.href.startsWith("blob:")) URL.revokeObjectURL(a.href);
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(st.brief.name || "snapmy-site").toLowerCase().replace(/\W+/g, "-")}-snapmy-${st.aspect.replace(":", "x")}.mp4`;
+      a.textContent = `Download MP4 (${st.aspect}, ${(blob.size / 1048576).toFixed(1)} MB)`;
+      a.hidden = false;
+      a.click();
+      toast("Your launch film is ready.");
     }
-  } catch (e) { toast("Render failed: " + e.message); }
-  $("exportOverlay").hidden = true; exportJob = null;
+  } catch (e) { console.warn(e); if (!job.cancelled) toast("Render failed: " + e.message); }
+  if (exportJob === job) { exportJob = null; $("exportOverlay").hidden = true; }
 });
-$("cancelExport").addEventListener("click", () => { exportJob = null; $("exportOverlay").hidden = true; });
-const absApi = (u) => new URL(API.replace(/\/api$/, "") + u, location.href).href;
+$("cancelExport").addEventListener("click", () => { if (exportJob) exportJob.cancelled = true; exportJob = null; $("exportOverlay").hidden = true; });
 async function refreshBackend() {
   const status = await backendStatus();
   st.backend = status.ok;
-  st.render = status.render?.available === true || status.ok; // Enable rendering if backend is available
+  st.render = status.render?.available === true;
   return status;
 }
 function blobToDataUrl(b) { return new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); }

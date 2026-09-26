@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { extractBrand, sitemapPages, shotUrl } from "./capture.server";
+
 const MAX_HTML = 1_200_000;
 const USER_AGENT = "SnapmySiteReader/1.0 (+https://snapmy-site.vercel.app/)";
 
@@ -46,17 +48,27 @@ async function fetchText(url, { timeout = 10000, headers = {}, maxBytes = MAX_HT
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    const response = await fetch(url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: { "user-agent": USER_AGENT, ...headers },
-    });
+    // Follow redirects by hand so each hop is re-checked against private addresses.
+    let current = String(url);
+    let response;
+    for (let hop = 0; ; hop++) {
+      response = await fetch(current, {
+        redirect: "manual",
+        signal: controller.signal,
+        headers: { "user-agent": USER_AGENT, ...headers },
+      });
+      const next = response.status >= 300 && response.status < 400 && response.headers.get("location");
+      if (!next) break;
+      await response.body?.cancel();
+      if (hop >= 4) throw new Error("too_many_redirects");
+      current = normalizeUrl(new URL(next, current).href).href;
+    }
     const text = await response.text();
     return {
       ok: response.ok,
       status: response.status,
       contentType: response.headers.get("content-type") || "",
-      url: response.url || url,
+      url: current,
       text: text.slice(0, maxBytes),
     };
   } catch (cause) {
@@ -721,7 +733,9 @@ function candidateScore(url, text) {
   ].reduce((score, [re, points]) => score + (re.test(value) ? points : 0), 0);
 }
 
-function screenshotUrl(pageUrl, width, height, fullPage = false) {
+function screenshotUrl(pageUrl, width, height, fullPage = false, shotOrigin = "") {
+  // Same-origin thum.io proxy when the server knows its own origin; microlink otherwise.
+  if (shotOrigin) return shotUrl(shotOrigin, pageUrl, width, height, fullPage);
   const target = new URL("https://api.microlink.io/");
   target.searchParams.set("url", pageUrl);
   target.searchParams.set("screenshot", "true");
@@ -733,14 +747,14 @@ function screenshotUrl(pageUrl, width, height, fullPage = false) {
   return target.href;
 }
 
-function screenshotCandidates(page, index) {
+function screenshotCandidates(page, index, shotOrigin = "") {
   const prefix = `page-${index + 1}`;
   const meta = { page: page.url, pageRole: page.role, source: "server-reader" };
   const candidates = [
     {
       ...meta,
       id: `${prefix}-desktop`,
-      url: screenshotUrl(page.url, 1440, 900),
+      url: screenshotUrl(page.url, 1440, 900, false, shotOrigin),
       viewport: { width: 1440, height: 900 },
       kind: "screenshot",
       role: page.role,
@@ -751,7 +765,7 @@ function screenshotCandidates(page, index) {
     candidates.push({
       ...meta,
       id: `${prefix}-tablet`,
-      url: screenshotUrl(page.url, 1024, 768),
+      url: screenshotUrl(page.url, 1024, 768, false, shotOrigin),
       viewport: { width: 1024, height: 768 },
       kind: "screenshot",
       role: page.role,
@@ -761,7 +775,7 @@ function screenshotCandidates(page, index) {
     candidates.push({
       ...meta,
       id: `${prefix}-mobile`,
-      url: screenshotUrl(page.url, 390, 844),
+      url: screenshotUrl(page.url, 390, 844, false, shotOrigin),
       viewport: { width: 390, height: 844 },
       kind: "screenshot",
       role: page.role,
@@ -771,7 +785,7 @@ function screenshotCandidates(page, index) {
     candidates.push({
       ...meta,
       id: `${prefix}-fullpage`,
-      url: screenshotUrl(page.url, 1440, 900, true),
+      url: screenshotUrl(page.url, 1440, 900, true, shotOrigin),
       viewport: { width: 1440, height: 900 },
       kind: "fullpage",
       role: "overview",
@@ -782,7 +796,7 @@ function screenshotCandidates(page, index) {
     candidates.push({
       ...meta,
       id: `${prefix}-mobile`,
-      url: screenshotUrl(page.url, 390, 844),
+      url: screenshotUrl(page.url, 390, 844, false, shotOrigin),
       viewport: { width: 390, height: 844 },
       kind: "screenshot",
       role: page.role,
@@ -1062,13 +1076,16 @@ function buildBrief(normalized, pages, candidates, diagnostics, providerConfigur
       pagesAttempted: diagnostics.pagesAttempted,
       pagesRead: pages.length,
       pageErrors: diagnostics.pageErrors,
+      sitemapPages: diagnostics.sitemapPages || 0,
+      brandSheets: Boolean(diagnostics.brandSheets),
+      screenshots: diagnostics.screenshots || "microlink",
       screenshotCandidates: candidates.length,
       visualEvidence: candidates.length >= 3 ? "multiple-candidates" : "limited",
     },
   };
 }
 
-async function readWebsite(value, { maxPages = 4 } = {}) {
+async function readWebsite(value, { maxPages = 4, shotOrigin = "" } = {}) {
   const normalized = normalizeUrl(value);
   const pageLimit = Number.isFinite(Number(maxPages))
     ? Math.max(1, Math.min(6, Number(maxPages)))
@@ -1101,6 +1118,25 @@ async function readWebsite(value, { maxPages = 4 } = {}) {
     !isMarkdown && directPage
       ? directPage
       : parsePage(normalized.href, homeResponse.text, { isMarkdown });
+  // The sitemap and the linked stylesheets are read alongside the page picks.
+  const [sitemap, brand] = isMarkdown
+    ? [[], null]
+    : await Promise.all([
+        sitemapPages(normalized, 60).catch(() => []),
+        extractBrand(direct.text, new URL(direct.url || normalized.href)).catch(() => null),
+      ]);
+  if (sitemap.length) {
+    const known = new Set(home.anchors.map((link) => link.url));
+    home.anchors = [
+      ...home.anchors,
+      ...sitemap.filter((url) => !known.has(url)).map((url) => ({ url, text: "" })),
+    ];
+  }
+  if (brand) {
+    home.colors = brandColors(unique([...home.colors, ...brand.colors]));
+    home.fonts = unique([...brand.fonts, ...home.fonts]).slice(0, 8);
+    home.logo = home.logo || brand.logo || brand.favicon || "";
+  }
   const selected = isMarkdown
     ? []
     : pageCandidates(home, normalized.origin, Math.max(0, pageLimit - 1));
@@ -1129,13 +1165,16 @@ async function readWebsite(value, { maxPages = 4 } = {}) {
     }),
   );
   const pages = [home, ...routeResults.filter((page) => !page.error)];
-  const candidates = pages.flatMap((page, index) => screenshotCandidates(page, index));
+  const candidates = pages.flatMap((page, index) => screenshotCandidates(page, index, shotOrigin));
   return buildBrief(
     normalized,
     pages,
     candidates,
     {
       pagesAttempted: 1 + selected.length,
+      sitemapPages: sitemap.length,
+      brandSheets: Boolean(brand),
+      screenshots: shotOrigin ? "thum.io" : "microlink",
       pageErrors: routeResults
         .filter((page) => page.error)
         .map((page) => ({ url: page.url, error: page.error }))
