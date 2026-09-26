@@ -2,6 +2,7 @@
 // Turns a site brief + a directed plan into a player-compatible HTML composition
 // (data-composition-id root, class="clip" timed layers, one paused GSAP timeline).
 // Scene boundaries stay on the 160 BPM beat grid, while shots can hold for different spans.
+import { pickTransition, transitionCodeFor, transitionLead, transitionSfx, transitionOverlayCss, transitionOverlayHtml } from "./transitions.js";
 
 export const CUT = 1.5;
 export const BEAT = CUT / 4;
@@ -95,7 +96,6 @@ const CAMERA_SCENE_TYPES = new Set(["flyin", "track", "depthReveal", "matchcut"]
 const PRODUCT_SCENE_TYPES = new Set(["screen", "scroll", "split", "flyin", "depthReveal", "matchcut", "track"]);
 
 // SFX cue each transition / scene type implies (consumed by the score engine)
-const TRANSITION_SFX = { whip: "swoosh_fast", zoom: "swoosh_air", flash: "rev_glass", wipe: "swoosh_mid", iris: "swoosh_low", glitch: "glitch", push: "swoosh_mid", cut: null, blocks: "swoosh_fast" };
 
 /* ---------------- utils ---------------- */
 export function rng(seed) {
@@ -343,52 +343,7 @@ function clip(text, n) { const s = String(text || "").trim(); if (s.length <= n)
 
 /* ---------------- transitions ---------------- */
 function transitionCode(kind, O, I, T, ctx) {
-  const { W, H, dir, motion = {}, treatment = {} } = ctx; const L = [];
-  const blur = treatment.contrast ? Math.min(18, motion.blur || 18) : Math.min(8, motion.blur || 8);
-  const x = Math.round(W * 0.38) * dir;
-  switch (kind) {
-    case "whip":
-      L.push(`tl.fromTo(${J(O)},{x:0,filter:"blur(0px)"},{x:${-x},filter:"blur(${blur}px)",duration:.2,ease:"power3.in",immediateRender:false},${r3(T - 0.2)});`);
-      L.push(`tl.fromTo(${J(I)},{x:${x},filter:"blur(${blur}px)"},{x:0,filter:"blur(0px)",duration:.34,ease:"expo.out",immediateRender:false},${r3(T - 0.02)});`);
-      break;
-    case "zoom":
-      L.push(`tl.fromTo(${J(O)},{scale:1,filter:"blur(0px)",opacity:1},{scale:1.7,filter:"blur(${Math.round(blur * 0.65)}px)",opacity:0,duration:.24,ease:"power3.in",immediateRender:false},${r3(T - 0.22)});`);
-      L.push(`tl.fromTo(${J(I)},{scale:.72,filter:"blur(${Math.round(blur * 0.58)}px)"},{scale:1,filter:"blur(0px)",duration:.42,ease:"expo.out",immediateRender:false},${r3(T - 0.04)});`);
-      break;
-    case "flash":
-      L.push(`tl.fromTo("#fx-flash",{opacity:0},{opacity:1,duration:.12,ease:"power2.in",immediateRender:false},${r3(T - 0.12)});`);
-      L.push(`tl.to("#fx-flash",{opacity:0,duration:.4,ease:"power2.out"},${r3(T)});`);
-      L.push(`tl.fromTo(${J(I)},{scale:1.1},{scale:1,duration:.6,ease:"expo.out",immediateRender:false},${r3(T)});`);
-      break;
-    case "wipe":
-      L.push(`tl.fromTo(${J(I)},{clipPath:"inset(0% 0% 0% 100%)"},{clipPath:"inset(0% 0% 0% 0%)",duration:.36,ease:"expo.inOut",immediateRender:false},${r3(T - 0.18)});`);
-      L.push(`tl.fromTo(${J(O)},{x:0},{x:${Math.round(-W * 0.12)},duration:.36,ease:"expo.inOut",immediateRender:false},${r3(T - 0.18)});`);
-      break;
-    case "iris":
-      L.push(`tl.fromTo(${J(I)},{clipPath:"circle(0% at 50% 50%)"},{clipPath:"circle(80% at 50% 50%)",duration:.46,ease:"expo.inOut",immediateRender:false},${r3(T - 0.2)});`);
-      L.push(`tl.fromTo(${J(O)},{scale:1},{scale:.9,duration:.46,ease:"power2.inOut",immediateRender:false},${r3(T - 0.2)});`);
-      break;
-    case "push":
-      L.push(`tl.fromTo(${J(O)},{yPercent:0},{yPercent:-100,duration:.4,ease:"power4.inOut",immediateRender:false},${r3(T - 0.2)});`);
-      L.push(`tl.fromTo(${J(I)},{yPercent:100},{yPercent:0,duration:.4,ease:"power4.inOut",immediateRender:false},${r3(T - 0.2)});`);
-      break;
-    case "glitch": {
-      const offs = [[-38, 14], [52, -10], [-18, 26], [0, 0]];
-      offs.forEach(([a, b], k) => L.push(`tl.set(${J(k < 2 ? O : I)},{x:${a},y:${b},filter:${J(k === 3 ? "none" : `hue-rotate(${60 + k * 70}deg) saturate(2.2)`)}},${r3(T - 0.12 + k * 0.045)});`));
-      L.push(`tl.fromTo("#fx-glitch",{opacity:0},{opacity:1,duration:.02,immediateRender:false},${r3(T - 0.12)});`);
-      L.push(`tl.set("#fx-glitch",{backgroundPosition:"0px 37px"},${r3(T - 0.07)});`);
-      L.push(`tl.set("#fx-glitch",{opacity:0},${r3(T + 0.08)});`);
-      break;
-    }
-    case "blocks":
-      L.push(`tl.fromTo("#fx-blocks i",{scaleY:0,transformOrigin:"50% 100%"},{scaleY:1,duration:.2,ease:"power3.in",stagger:.028,immediateRender:false},${r3(T - 0.3)});`);
-      L.push(`tl.fromTo("#fx-blocks i",{scaleY:1,transformOrigin:"50% 0%"},{scaleY:0,duration:.28,ease:"power3.out",stagger:.028,immediateRender:false},${r3(T + 0.02)});`);
-      break;
-    case "cut":
-    default:
-      L.push(`tl.fromTo(${J(I)},{scale:1.08},{scale:1,duration:.5,ease:"expo.out",immediateRender:false},${r3(T)});`);
-  }
-  return L;
+  return transitionCodeFor(kind, O, I, T, ctx);
 }
 
 /* ---------------- scenes ---------------- */
@@ -765,23 +720,18 @@ function sceneBuilders(ctx) {
 /* ---------------- transition planner ---------------- */
 function planTransitions(scenes, S, rand, motion = {}, treatment = {}) {
   const out = [null];
+  const recent = [];
+  // Families the look doesn't allow: glitch and bright flashes stay opt-in.
+  const exclude = [...(treatment.glitch ? [] : ["glitch"]), ...(treatment.flash ? [] : ["flash", "streak"])];
   for (let i = 1; i < scenes.length; i++) {
-    const prev = scenes[i - 1].type, cur = scenes[i].type;
-    const prevIntent = scenes[i - 1].motionIntent || scenes[i - 1].motion?.intent;
+    const cur = scenes[i].type;
     const intent = scenes[i].motionIntent || scenes[i].motion?.intent;
-    let k = motion.primary || S.primary;
-    if (scenes[i].transition && ["whip", "zoom", "flash", "wipe", "iris", "push", "glitch", "blocks", "cut"].includes(scenes[i].transition)) k = scenes[i].transition;
+    let k;
+    if (scenes[i].transition) k = scenes[i].transition;
     else if (cur === "flashword") k = "cut";
-    else if (cur === "screen" && prev !== "screen") k = intent === "focus" ? "push" : "cut";
-    else if (cur === "endcard") k = "cut";
-    else if (cur === "quote" || cur === "logos") k = "cut";
-    else if (intent === "impact" || intent === "commit") k = treatment.flash ? "flash" : "cut";
-    else if (intent === "glide" || prevIntent === "glide") k = "wipe";
-    else if (prev === "screen" && cur === "feature") k = "push";
-    else if (rand.next() < 0.18) { const accents = (motion.accents || S.accents).filter((a) => a !== "blocks" && (a !== "glitch" || treatment.glitch) && (a !== "flash" || treatment.flash)); if (accents.length) k = rand.pick(accents); }
-    if (["glitch", "blocks"].includes(k) && !treatment[k]) k = "cut";
-    if (k === out[i - 1]) k = "cut";
+    else k = pickTransition({ family: motion.family || "product", intent, curType: cur, rand: () => rand.next(), recent, exclude });
     out.push(k);
+    recent.push(k);
   }
   return out;
 }
@@ -1073,7 +1023,6 @@ export function compose(brief, plan, opts = {}) {
   scenes.forEach((sc, i) => {
     const id = `s${i}`; const shotPlan = timings[i]; const t0 = shotPlan.t;
     const isLast = i === N - 1;
-    const LEAD = { whip: 0.02, zoom: 0.04, flash: 0, wipe: 0.18, iris: 0.2, push: 0.2, glitch: 0.03, blocks: 0, cut: 0 };
     const group = windowGroupAt.get(i);
 
     if (group && isProductScene(i)) {
@@ -1113,7 +1062,7 @@ export function compose(brief, plan, opts = {}) {
       });
       ctx.windowed = false;
 
-      const start = group.start === 0 ? 0 : Math.max(0, groupStart - (LEAD[trans[group.start]] ?? 0));
+      const start = group.start === 0 ? 0 : Math.max(0, groupStart - transitionLead(trans[group.start]));
       const rigId = `${gid}-rig`;
       const camId = `${gid}-camera-rig`;
       const shots = memberIndices.length;
@@ -1147,12 +1096,12 @@ export function compose(brief, plan, opts = {}) {
         ctx.dir = camDirAt(group.start);
         const k = trans[group.start];
         code.push(...transitionCode(k, `#s${group.start - 1}-sc`, `#s${group.start}-sc`, groupStart, ctx));
-        if (TRANSITION_SFX[k]) cues.push({ t: groupStart - 0.12, sfx: TRANSITION_SFX[k], gain: 0.5, scene: group.start, transition: k });
+        if (transitionSfx(k)) cues.push({ t: groupStart - 0.12, sfx: transitionSfx(k), gain: 0.5, scene: group.start, transition: k });
       }
       return;
     }
 
-    const start = i === 0 ? 0 : Math.max(0, t0 - (LEAD[trans[i]] ?? 0));
+    const start = i === 0 ? 0 : Math.max(0, t0 - transitionLead(trans[i]));
     const end = isLast ? duration : shotPlan.end + OV;
     ctx.windowed = false;
     ctx.timing = shotPlan;
@@ -1167,7 +1116,7 @@ export function compose(brief, plan, opts = {}) {
       ctx.dir = camDirAt(i);
       const k = trans[i];
       code.push(...transitionCode(k, `#s${i - 1}-sc`, `#${id}-sc`, t0, ctx));
-      if (TRANSITION_SFX[k]) cues.push({ t: t0 - 0.12, sfx: TRANSITION_SFX[k], gain: 0.5, scene: i, transition: k });
+      if (transitionSfx(k)) cues.push({ t: t0 - 0.12, sfx: transitionSfx(k), gain: 0.5, scene: i, transition: k });
     }
     sceneMeta.push({ i, type: sc.type, t: t0, duration: shotPlan.span, hold: shotPlan.hold, asset: sc.asset?.id || null, motion: ctx.motionSpec.intent, transition: absorbed ? "camera" : trans[i], label: sceneLabel(sc) });
   });
@@ -1223,7 +1172,7 @@ export function compose(brief, plan, opts = {}) {
 <div id="root" data-composition-id="cue" data-start="0" data-duration="${r3(duration)}" data-width="${W}" data-height="${H}" data-fps="30">
 <div id="bgl" class="clip" data-start="0" data-duration="${r3(duration)}" data-track-index="0"></div>
 ${html}
- <div id="fx" class="clip" data-start="0" data-duration="${r3(duration)}" data-track-index="6"><div id="fx-blocks">${blocks}</div><div id="fx-glitch"></div><div id="fx-flash"></div><div id="fx-grain"></div><div id="fx-vig"></div></div>
+ <div id="fx" class="clip" data-start="0" data-duration="${r3(duration)}" data-track-index="6"><div id="fx-blocks">${blocks}</div><div id="fx-glitch"></div><div id="fx-flash"></div>${transitionOverlayHtml()}<div id="fx-grain"></div><div id="fx-vig"></div></div>
 ${hud}
 ${audioTag}
 </div>
@@ -1389,6 +1338,7 @@ html,body{width:${W}px;height:${H}px;overflow:hidden;background:${P.bg}}
 #fx-blocks i:nth-child(even){background:${mix(P.field, S.dark ? "#000000" : "#ffffff", 0.2)}}
 #fx-glitch{position:absolute;inset:0;background:${scan};mix-blend-mode:screen;opacity:0}
 #fx-flash{position:absolute;inset:0;background:#fff;opacity:0}
+${transitionOverlayCss(P)}
  #fx-grain{position:absolute;inset:-50px;background-image:url("${noise}");opacity:${grain};mix-blend-mode:${S.dark ? "overlay" : "multiply"}}
  #fx-vig{position:absolute;inset:0;background:radial-gradient(ellipse at center, transparent 58%, rgba(0,0,0,${treatment.vignette || 0}) 100%)}
 #hud{position:absolute;left:0;right:0;top:0;z-index:600;pointer-events:none}
