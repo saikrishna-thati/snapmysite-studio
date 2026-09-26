@@ -99,6 +99,33 @@ function loadCapture(url, ms = 2000) {
   captureCheck.set(url, p);
   return p;
 }
+// Loads every screenshot a brief points at (the capture service can take a few
+// seconds per page), records real dimensions, and drops the ones that failed so
+// the film never shows a broken frame.
+async function warmEvidence(brief) {
+  const urlOf = (v) => (typeof v === "string" ? v : v && v.url) || "";
+  const urls = [...new Set([
+    ...(brief.screenshots || []).map(urlOf),
+    ...(brief.evidenceAssets || []).map(urlOf),
+    ...(brief.screenshotCandidates || []).map(urlOf),
+    ...(brief.fullpages || []).map(urlOf),
+    urlOf(brief.fullpage),
+  ].filter((u) => /^https?:/i.test(u)))];
+  if (!urls.length) return brief;
+  const sizes = new Map(await Promise.all(urls.map(async (u) => [u, await loadCapture(u, 30000)])));
+  const ok = (v) => { const u = urlOf(v); return !sizes.has(u) || !!sizes.get(u); };
+  const sized = (a) => { const s = sizes.get(urlOf(a)); return s && a && typeof a === "object" ? { ...a, width: s.width, height: s.height } : a; };
+  const kept = urls.filter((u) => sizes.get(u)).length;
+  log(`Captured ${kept} of ${urls.length} screenshots`, kept ? "ok" : "warn");
+  return {
+    ...brief,
+    screenshots: (brief.screenshots || []).filter(ok),
+    evidenceAssets: (brief.evidenceAssets || []).filter(ok).map(sized),
+    screenshotCandidates: (brief.screenshotCandidates || []).filter(ok).map(sized),
+    fullpages: (brief.fullpages || []).filter(ok),
+    fullpage: ok(brief.fullpage) ? brief.fullpage : "",
+  };
+}
 // Validate captures, then drop product scenes whose capture is unavailable and
 // remap shot indices onto the surviving evidence. Never invents a panel.
 async function validateEvidence(brief, plan) {
@@ -286,7 +313,7 @@ async function run(url) {
   stage("home"); log("Opening " + url);
   if (st.backend === null) {
     const status = await refreshBackend();
-    if (status.ok && !st.render) log("Reader and director are online; MP4 export is not configured in this deployment.", "warn");
+    if (status.ok && !st.render) log("Reader is online; MP4 export is not available in this build yet.", "warn");
   }
   let brief;
   try {
@@ -297,29 +324,21 @@ async function run(url) {
     brief = await readInBrowser(url);
   }
   if (tok !== st.token) return;
-  st.brief = brief;
   stage("assets");
+  log("Capturing page screenshots");
+  brief = await warmEvidence(brief);
+  if (tok !== st.token) return;
+  st.brief = brief;
   log(`Found ${brief.features.length} features · ${brief.stats.length} numbers · ${brief.quotes.length} quotes · ${brief.screenshots.length} screenshots`, "ok");
   if (brief.colors.length) log("Brand colors " + brief.colors.slice(0, 4).join(" "), "ok");
   $("studioTitle").textContent = brief.name; fillFacts();
   stage("direct"); $("studioStatus").textContent = "Directing";
-  let decisions = null, raw = null;
-  if (st.backend) {
-     log("Finding the strongest story angle");
-     log("Shaping the film direction around your product");
-     try {
-       const d = await api("/direct", { brief }, { timeout: 70000 });
-       decisions = d.decisions && d.decisions.style ? { ...d.decisions, layers: d.layers } : null; raw = d.plan;
-       if (d.brief) { brief = { ...brief, ...d.brief }; st.brief = brief; }
-       if (d.layers) log(`Decisions by ${d.layers.decisions === "jev" ? "JEV" : "built-in rules"} · creative pass by ${d.layers.creative === "groq" ? "Groq" : "built-in rules"}`, "ok");
-       const j = d.decisions?.jev; if (j) log(`JEV kept ${j.include.length} items, skipped ${j.skip.length} · ${j.motion.camera} camera`, "ok");
-       if (d.errors?.jev) log("Direction note: " + d.errors.jev.slice(0, 80), "warn");
-       const creative = d.errors ? Object.entries(d.errors).find(([key]) => key !== "jev") : null; if (creative) log("Creative note: " + creative[1].slice(0, 80), "warn");
-     } catch (e) { log("Direction call failed: " + e.message, "err"); }
-  }
-  if (!decisions) { decisions = guessDecisions(brief); log("Using the built-in style guess: " + STYLES[decisions.style].label, "warn"); }
-   else log(`Direction set → ${STYLES[decisions.style]?.label || decisions.style}`, "ok");
-   if (!raw) { try { log("Adding the final creative pass"); raw = await kimiInBrowser(brief, decisions); } catch (e) { log("Creative pass unavailable, using the built-in direction", "warn"); } }
+  // Direction runs in the browser.
+  log("Finding the strongest story angle");
+  const decisions = guessDecisions(brief);
+  let raw = null;
+  log(`Direction set → ${STYLES[decisions.style]?.label || decisions.style}`, "ok");
+  try { log("Adding the final creative pass"); raw = await kimiInBrowser(brief, decisions); } catch (e) { log("Creative pass unavailable, using the built-in direction", "warn"); }
   if (tok !== st.token) return;
   stage("panel");
   st.decisions = decisions; st.raw = raw;
@@ -505,7 +524,7 @@ const absApi = (u) => new URL(API.replace(/\/api$/, "") + u, location.href).href
 async function refreshBackend() {
   const status = await backendStatus();
   st.backend = status.ok;
-  st.render = status.render?.available === true || status.ok; // Enable rendering if backend is available
+  st.render = status.render?.available === true;
   return status;
 }
 function blobToDataUrl(b) { return new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); }

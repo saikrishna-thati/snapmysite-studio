@@ -16,6 +16,10 @@ export const Route = createFileRoute("/api/health")({
         const jevCount = env.JEV_API_KEYS.length;
 
         const healthData = {
+          // The studio reads `ok` to decide whether to use the server reader.
+          ok: true,
+          // MP4 rendering happens in the browser; there is no server render queue.
+          render: { available: false },
           status: errors.length > 0 ? "degraded" : "healthy",
           timestamp: new Date().toISOString(),
           uptime_seconds: uptimeSeconds,
